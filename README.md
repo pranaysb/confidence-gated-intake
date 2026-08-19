@@ -249,6 +249,10 @@ mocked extractor). 30 more run live against the full eval set if
 
 ## Deployment
 
+**Live: [confidence-gated-intake.vercel.app](https://confidence-gated-intake.vercel.app)**
+— the dashboard only, reading real eval results from a cloud Postgres.
+See below for why n8n/extraction-service stay local.
+
 **n8n and the extraction service are not deployed to free serverless
 hosting, on purpose.** They need to stay continuously running — n8n holds
 an open IMAP connection and listens for Telegram webhooks — and free tiers

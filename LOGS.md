@@ -436,4 +436,63 @@ section).
   untracked from the build check; added to `.gitignore` before it could
   get committed.
 
+## 2026-08-19 (cont'd) — Dashboard deployed to Vercel, debugged with real API access
+
+First deploy attempt returned a bare `404: NOT_FOUND` from Vercel's edge
+(not a Next.js 404 page -- infrastructure-level, no matching build).
+Debugged with a project-scoped Vercel API token (user generated it, same
+pattern as Groq/Gmail: they create it, hand it over, get deleted from
+scratch files after use) rather than guessing from the outside.
+
+- First token the user pasted came back `{"error":"User not found"}` from
+  `/v2/user` -- asked for a fresh one rather than assuming it was my
+  mistake. Second token hit the same error on the *account* endpoint, but
+  worked fine on a *project* endpoint (`/v9/projects`) -- turned out to be
+  a project-scoped token (visible in their screenshot: scope
+  "confidence-gated-intake"), which can't call account-level endpoints.
+  Not a bad token, just the wrong endpoint for its scope -- caught by
+  trying a different endpoint rather than asking for a third token.
+- Root cause of the 404, confirmed via the API rather than guessed:
+  `GET /v9/projects` showed `rootDirectory: null, framework: null` --
+  the "Root Directory: dashboard" setting from the manual Vercel UI setup
+  never actually saved. Vercel had been building from the repo root
+  (no valid Next.js app there), producing a deployment that was
+  technically READY but had nothing real to serve.
+- Fixed directly via the API: `PATCH /v9/projects/{id}` with
+  `{"rootDirectory": "dashboard", "framework": "nextjs"}`. Confirmed the
+  patch applied by reading the values back, not just trusting a 200
+  response.
+- Existing settings changes don't retroactively fix a deployment --
+  triggered a fresh one via `POST /v13/deployments` (redeploy of the
+  latest commit against corrected settings), polled `readyState` until
+  `READY`.
+- Verified the fix by actually loading the production URL, not just
+  checking deployment status: title changed from "404: NOT_FOUND" to
+  "Confidence-Gated Intake — Dashboard", full page content confirmed via
+  `get_page_text`.
+- **Found a second real gap while verifying**: the eval report text was
+  rendering correctly, but the summary tiles (accuracy, false-confidence
+  count) showed "—". Investigated rather than assuming success: queried
+  Neon's `eval_runs` table directly -- **0 rows**. `run_eval.py` had only
+  ever been run against the local Postgres `DATABASE_URL`, never against
+  Neon, so the deployed dashboard had no eval data of its own to read from
+  `getLatestEvalRun()`. The report text rendering anyway was a separate,
+  interesting finding: Next.js's build-time output file tracing had
+  apparently detected and bundled the sibling `eval/eval_report.md` file
+  referenced by the (now-fallback-only) disk-read path, despite Root
+  Directory scoping -- a real but implicit/fragile behavior, not something
+  to rely on. The DB-backed `report_markdown` fix from the previous entry
+  was the right call regardless of this accident working out.
+  Fixed properly by running `eval/run_eval.py` with `DATABASE_URL` pointed
+  at Neon directly, confirmed the row landed (`accuracy: 0.8276,
+  false_confidence_count: 3, report_markdown` populated), then reloaded
+  the production URL and confirmed the summary tiles now show real
+  numbers instead of placeholders.
+- Vercel token used only in shell commands (never written to a repo file);
+  no cleanup needed there. User may want to revoke/rotate it from
+  vercel.com/account/tokens now that setup is done, purely as routine
+  hygiene for a token that's served its purpose.
+
+**Dashboard is now genuinely live**: https://confidence-gated-intake.vercel.app
+
 <!-- New entries go above this line -->
