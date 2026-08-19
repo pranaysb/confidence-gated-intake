@@ -1,0 +1,85 @@
+# One-command up -- IF your machine has the RAM/disk to spare for Docker
+# Desktop's VM.
+#
+# This repo's own local development does NOT use this file. Docker
+# Desktop's VM (~3-4GB disk, continuous RAM overhead) running alongside
+# Ollama's local model inference overloaded the 8GB-RAM dev machine badly
+# enough to force a shutdown. See LOGS.md for the full incident and the
+# Docker-free setup actually used instead: native Postgres via Homebrew,
+# n8n via `npm install -g n8n`, and Groq's free cloud API instead of local
+# Ollama inference (see extraction-service/llm_client.py). This file is
+# kept and still valid for anyone with more headroom who wants the literal
+# one-command-up story the spec originally asks for.
+#
+# GROQ_API_KEY is required either way now (see extraction-service/.env.example)
+# -- llm_client.py calls Groq, not a containerized or local Ollama. If you
+# have RAM to spare and want true local/offline inference instead, restore
+# extraction-service/ollama_client.py.bak, point confidence.py's import back
+# at it, and add an `ollama` service here (native `ollama serve` + the
+# host.docker.internal extra_hosts entry below still works for that).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: intake
+    ports:
+      # Host-side 5433, not 5432: this machine already runs a native
+      # Homebrew postgresql@16 service on 127.0.0.1:5432 (unrelated to this
+      # project) that would otherwise silently steal "localhost:5432"
+      # connections meant for this container. Inter-container traffic
+      # (extraction-service -> postgres:5432) is unaffected -- it uses
+      # Docker's internal network and is never on the host loopback.
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  extraction-service:
+    build: ./extraction-service
+    restart: unless-stopped
+    env_file:
+      - ./extraction-service/.env  # GROQ_API_KEY (gitignored, see .env.example)
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/intake
+      CONFIDENCE_THRESHOLD: "0.7"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      # Only needed if you switch back to local Ollama (see top-of-file note)
+      # -- harmless no-op otherwise.
+      - "host.docker.internal:host-gateway"
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=UTC
+      # Local single-user demo instance; not exposed beyond localhost.
+      - N8N_SECURE_COOKIE=false
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/workflows:ro
+    depends_on:
+      - extraction-service
+
+volumes:
+  postgres_data:
+  n8n_data:
