@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+.next/
+.n8n/
+.env
+.env.local
+*.log
+.DS_Store
+eval/eval_run_output/
