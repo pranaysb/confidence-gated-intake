@@ -27,7 +27,13 @@ function confidenceBadgeClass(confidence: number) {
   return "low";
 }
 
-function readEvalReport(): string | null {
+// Local-dev-only fallback: reads the sibling eval/eval_report.md file directly.
+// Works when running `npm run dev` from a full checkout (dashboard/ and eval/
+// side by side), but is NOT relied on in production -- a deployment with
+// Root Directory=dashboard (e.g. Vercel) won't have eval/ available at
+// runtime at all. The DB-stored report_markdown column (see db.ts) is the
+// source of truth; this is only consulted if that's empty.
+function readEvalReportFromDisk(): string | null {
   const reportPath = path.join(process.cwd(), "..", "eval", "eval_report.md");
   try {
     return fs.readFileSync(reportPath, "utf-8");
@@ -58,7 +64,7 @@ export default async function DashboardPage() {
     dbError = e instanceof Error ? e.message : String(e);
   }
 
-  const evalReport = readEvalReport();
+  const evalReport = latestEvalRun?.report_markdown ?? readEvalReportFromDisk();
   const buckets = bucketize(confidenceScores);
   const maxBucketCount = Math.max(1, ...buckets.map((b) => b.count));
   const totalMessages = confidenceScores.length;

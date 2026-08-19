@@ -69,7 +69,8 @@ export async function getReviewQueue(): Promise<ReviewQueueRow[]> {
 
 export async function getLatestEvalRun() {
   const { rows } = await pool.query(`
-    select total_messages, correct_extractions, false_confidence_count, accuracy, run_at
+    select total_messages, correct_extractions, false_confidence_count, accuracy, run_at,
+           report_markdown
     from eval_runs
     order by run_at desc
     limit 1

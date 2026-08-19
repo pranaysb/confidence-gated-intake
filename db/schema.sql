@@ -45,7 +45,12 @@ create table if not exists eval_runs (
     correct_extractions INT,
     false_confidence_count INT,         -- high confidence but wrong
     accuracy FLOAT,
-    notes TEXT
+    notes TEXT,
+    report_markdown TEXT                -- full eval_report.md content, so the
+                                         -- dashboard can render it straight from
+                                         -- the DB without depending on a sibling
+                                         -- file being present at runtime (e.g. on
+                                         -- Vercel with Root Directory=dashboard)
 );
 
 create index if not exists idx_message_log_hash on message_log(message_hash);

@@ -397,4 +397,43 @@ live-testable without a public tunnel; see README for status.
   the calibration report renders correctly by re-running `run_eval.py`
   three times and eyeballing the output each time, not just once.
 
+## 2026-08-19 (cont'd) — Deployment prep: dashboard's eval report moved into the DB
+
+Started setting up dashboard deployment (Vercel + a cloud Postgres, since
+n8n/extraction-service stay local per the spec's own guidance on
+serverless not suiting always-on automations -- see README's Deployment
+section).
+
+- **Supabase blocked**: account already at its 2-free-project cap
+  (account-wide, not per-org -- confirmed the limit persists across the
+  org switcher). Declined creating a second Supabase account to route
+  around it (against most providers' ToS, and account creation isn't
+  something this assistant does regardless). Used **Neon.tech** instead --
+  a genuinely separate free provider, not a workaround.
+- Applied `db/schema.sql` to the new Neon database, verified all 4 tables
+  created.
+- **Caught a real bug before it shipped**: `dashboard/app/page.tsx` was
+  reading `eval_report.md` from a sibling directory
+  (`path.join(process.cwd(), "..", "eval", "eval_report.md")`), which
+  works locally (`dashboard/` and `eval/` side by side) but would silently
+  break on Vercel with Root Directory set to `dashboard` -- that config
+  typically doesn't expose sibling directories to the deployed function at
+  runtime. Rather than discovering this after a broken deploy, fixed it
+  properly: added a `report_markdown TEXT` column to `eval_runs`,
+  `run_eval.py` now stores the full rendered report text in the DB on
+  every run, and the dashboard reads `report_markdown` from the latest
+  `eval_runs` row as the source of truth (the filesystem read is kept as a
+  local-dev-only fallback, clearly commented as such).
+- Migrated the new column onto both existing databases (local `intake` and
+  the new Neon one) via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+  Re-ran `eval/run_eval.py` and confirmed via the dashboard (still running
+  locally) that it now renders the report from `report_markdown`, not the
+  file -- verified by reading the actual page content, not assumed from
+  the code change alone.
+- Verified before committing: `npx tsc --noEmit` (no type errors),
+  `npm run build` (production build succeeds), and the full pytest suite
+  (42/42) -- a build artifact (`tsconfig.tsbuildinfo`) briefly appeared
+  untracked from the build check; added to `.gitignore` before it could
+  get committed.
+
 <!-- New entries go above this line -->

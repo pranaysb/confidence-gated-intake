@@ -247,6 +247,42 @@ cd extraction-service && source .venv/bin/activate && python3 -m pytest
 mocked extractor). 30 more run live against the full eval set if
 `GROQ_API_KEY`/`GROQ_API_KEYS` is set, and are skipped cleanly otherwise.
 
+## Deployment
+
+**n8n and the extraction service are not deployed to free serverless
+hosting, on purpose.** They need to stay continuously running — n8n holds
+an open IMAP connection and listens for Telegram webhooks — and free tiers
+(Render, Railway, etc.) spin down after ~15 minutes idle, which would
+silently break both channels. This isn't a limitation being worked around;
+it's the spec's own stated guidance: *"Cron-driven automations don't
+behave well on free serverless hosting — local run + video is the
+standard, honest way to demo this."* They run locally (see "How to run it"
+above).
+
+**The dashboard deploys well**, because it's the opposite kind of
+workload — stateless, read-only, exactly what serverless is built for.
+Deployed stack:
+
+- **Database**: [Neon](https://neon.tech) (free tier, no card). Originally
+  planned to use Supabase, per the spec's own suggestion, but hit an
+  account-wide 2-free-project cap; used Neon instead rather than opening a
+  second Supabase account to route around the limit. Apply the schema the
+  same way as local setup: `psql "$NEON_CONNECTION_STRING" -f db/schema.sql`.
+- **Dashboard**: [Vercel](https://vercel.com) (free tier, no card). Import
+  the repo, set **Root Directory** to `dashboard`, add `DATABASE_URL` as an
+  environment variable pointing at the Neon connection string, deploy.
+
+One real bug this surfaced and fixed: the dashboard originally read
+`eval_report.md` from a sibling directory
+(`../eval/eval_report.md` relative to `dashboard/`), which works locally
+but would silently break with Vercel's Root Directory set to `dashboard` —
+that config doesn't expose sibling directories to the deployed function at
+runtime. Fixed by adding a `report_markdown` column to `eval_runs`;
+`run_eval.py` now stores the full report text in the database on every
+run, and the dashboard reads it from there — a filesystem read of the
+sibling file is kept only as a local-dev fallback. See `LOGS.md` for the
+full story.
+
 ## What's not done / stretch goals
 
 - **Email channel: verified live, end-to-end.** Gmail IMAP credential

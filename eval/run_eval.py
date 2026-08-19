@@ -202,7 +202,7 @@ def compute_calibration(results: list[dict]) -> dict:
     return {"buckets": buckets, "ece": ece, "total_messages": total}
 
 
-def write_report(results: list[dict], summary: dict, calibration: dict) -> None:
+def write_report(results: list[dict], summary: dict, calibration: dict) -> str:
     lines = []
     lines.append("# Evaluation Report")
     lines.append("")
@@ -320,8 +320,10 @@ def write_report(results: list[dict], summary: dict, calibration: dict) -> None:
                       "how\" above, not a new failure mode.")
         lines.append("")
 
-    REPORT_PATH.write_text("\n".join(lines) + "\n")
+    report_text = "\n".join(lines) + "\n"
+    REPORT_PATH.write_text(report_text)
     print(f"\nWrote {REPORT_PATH}")
+    return report_text
 
 
 def write_raw_results(results: list[dict]) -> None:
@@ -331,7 +333,7 @@ def write_raw_results(results: list[dict]) -> None:
     print(f"Wrote raw results to {out_path}")
 
 
-def log_to_db(summary: dict) -> None:
+def log_to_db(summary: dict, report_text: str) -> None:
     try:
         sys.path.insert(0, str(REPO_ROOT / "extraction-service"))
         import db  # noqa: E402
@@ -341,8 +343,9 @@ def log_to_db(summary: dict) -> None:
                 cur.execute(
                     """
                     insert into eval_runs
-                        (total_messages, correct_extractions, false_confidence_count, accuracy, notes)
-                    values (%s, %s, %s, %s, %s)
+                        (total_messages, correct_extractions, false_confidence_count, accuracy,
+                         notes, report_markdown)
+                    values (%s, %s, %s, %s, %s, %s)
                     """,
                     (
                         summary["total_messages"],
@@ -350,9 +353,10 @@ def log_to_db(summary: dict) -> None:
                         summary["false_confidence_count"],
                         summary["overall_accuracy"],
                         "run via eval/run_eval.py",
+                        report_text,
                     ),
                 )
-        print("Logged run to eval_runs table.")
+        print("Logged run to eval_runs table (including full report text).")
     except Exception as e:  # noqa: BLE001 -- eval must still succeed w/o a DB
         print(f"(skipped logging to database: {e})")
 
@@ -362,8 +366,8 @@ if __name__ == "__main__":
     summary = summarize(results)
     calibration = compute_calibration(results)
     write_raw_results(results)
-    write_report(results, summary, calibration)
-    log_to_db(summary)
+    report_text = write_report(results, summary, calibration)
+    log_to_db(summary, report_text)
 
     print("\n--- Summary ---")
     print(json.dumps(summary, indent=2))
