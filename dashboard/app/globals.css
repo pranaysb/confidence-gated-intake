@@ -1,0 +1,126 @@
+:root {
+  --bg: #0b0e14;
+  --panel: #131722;
+  --border: #232838;
+  --text: #e6e9f0;
+  --muted: #8b93a7;
+  --accent: #5b8cff;
+  --good: #3ecf8e;
+  --warn: #f0b429;
+  --bad: #f0576b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+
+h1 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 32px;
+}
+
+section {
+  margin-bottom: 40px;
+}
+
+section h2 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.stat-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  min-width: 150px;
+  flex: 1;
+}
+
+.stat .value {
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.stat .label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th, td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.badge.low { background: rgba(240, 87, 107, 0.15); color: var(--bad); }
+.badge.mid { background: rgba(240, 180, 41, 0.15); color: var(--warn); }
+.badge.high { background: rgba(62, 207, 142, 0.15); color: var(--good); }
+
+pre.eval-report {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 20px 0;
+}
