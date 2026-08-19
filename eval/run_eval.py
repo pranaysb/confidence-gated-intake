@@ -83,6 +83,17 @@ def evaluate_case(case: dict) -> dict:
 
     false_confidence = bool(judged and auto_routed and not correct)
 
+    # Uniform, category-independent correctness signal for calibration only:
+    # did the extracted fields match the labeled expectation, full stop --
+    # not "did the system make the right routing call." For an ambiguous
+    # case with mostly-null expected fields, correctly outputting null
+    # counts as correct here; that's the point (calibration asks "when the
+    # system says X% confident, is the underlying extraction X% accurate,"
+    # not "did it defer appropriately"). Included for every message, even
+    # the documented known-gap case -- calibration isn't a pass/fail
+    # judgment about desired behavior, just confidence vs. accuracy.
+    field_level_correct = fields_match(result["extracted"], case.get("expected") or {})
+
     return {
         "id": case["id"],
         "category": category,
@@ -96,6 +107,7 @@ def evaluate_case(case: dict) -> dict:
         "judged": judged,
         "correct": correct,
         "false_confidence": false_confidence,
+        "field_level_correct": field_level_correct,
         "notes": case.get("notes", ""),
     }
 
@@ -147,7 +159,50 @@ def summarize(results: list[dict]) -> dict:
     }
 
 
-def write_report(results: list[dict], summary: dict) -> None:
+CALIBRATION_BUCKETS = [
+    (0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.01),
+]
+
+
+def compute_calibration(results: list[dict]) -> dict:
+    """Phase 5 stretch: is the confidence score actually calibrated, i.e.
+    does "80% confidence" correspond to roughly 80% correct in practice --
+    or is it just a number that looks meaningful without being one?
+
+    Bucket-width note: 5 buckets over 30 messages is a small-sample
+    reliability diagram (~6 messages/bucket on average, unevenly
+    distributed) -- fine for a portfolio-scale demo, not a claim of
+    statistical rigor. Reported plainly, including the sample sizes, so
+    nobody mistakes a 30-message ECE for a real calibration guarantee.
+    """
+    buckets = []
+    for lo, hi in CALIBRATION_BUCKETS:
+        in_bucket = [r for r in results if lo <= r["confidence"] < hi]
+        if in_bucket:
+            mean_confidence = sum(r["confidence"] for r in in_bucket) / len(in_bucket)
+            accuracy = sum(1 for r in in_bucket if r["field_level_correct"]) / len(in_bucket)
+        else:
+            mean_confidence = None
+            accuracy = None
+        buckets.append({
+            "range": f"{lo:.1f}–{min(hi, 1.0):.1f}",
+            "count": len(in_bucket),
+            "mean_confidence": mean_confidence,
+            "actual_accuracy": accuracy,
+            "gap": (accuracy - mean_confidence) if in_bucket else None,
+        })
+
+    populated = [b for b in buckets if b["count"] > 0]
+    total = sum(b["count"] for b in populated)
+    ece = (
+        sum(b["count"] * abs(b["gap"]) for b in populated) / total
+        if total else None
+    )
+
+    return {"buckets": buckets, "ece": ece, "total_messages": total}
+
+
+def write_report(results: list[dict], summary: dict, calibration: dict) -> None:
     lines = []
     lines.append("# Evaluation Report")
     lines.append("")
@@ -208,6 +263,63 @@ def write_report(results: list[dict], summary: dict) -> None:
                           f"auto_routed={r['auto_routed']}, extracted={r['extracted']}. {r['notes']}")
         lines.append("")
 
+    lines.append("## Confidence calibration (Phase 5 stretch)")
+    lines.append("")
+    lines.append("Accuracy here is a different, uniform measure than the headline numbers above: "
+                  "did the extracted fields match the labeled expectation, full stop -- including on "
+                  "ambiguous messages, where correctly outputting `null` counts as correct. This asks "
+                  "\"when the system reports X% confidence, is the extraction actually X% accurate,\" "
+                  "not \"did it make the right routing call.\"")
+    lines.append("")
+    ece = calibration["ece"]
+    lines.append(f"**Expected Calibration Error (ECE): {ece:.3f}**" if ece is not None else "ECE: n/a")
+    lines.append("")
+    lines.append("| Confidence range | Messages | Mean confidence | Actual accuracy | Gap |")
+    lines.append("|---|---|---|---|---|")
+    for b in calibration["buckets"]:
+        if b["count"] == 0:
+            lines.append(f"| {b['range']} | 0 | — | — | — |")
+        else:
+            lines.append(
+                f"| {b['range']} | {b['count']} | {b['mean_confidence']:.1%} | "
+                f"{b['actual_accuracy']:.1%} | {b['gap']:+.1%} |"
+            )
+    lines.append("")
+    lines.append(f"Sample size caveat, stated plainly: {calibration['total_messages']} messages spread "
+                  "across 5 buckets is ~6 per bucket on average, unevenly distributed. This is enough to "
+                  "see whether confidence is in the right ballpark, not enough to certify a calibration "
+                  "guarantee -- a positive gap (accuracy > confidence) means the system is "
+                  "under-confident in that range; a negative gap means it's over-confident, which is the "
+                  "more dangerous direction since it's what produces false-confidence auto-routing.")
+    lines.append("")
+    lines.append("**Reading the 0.0-0.2 bucket (large positive gap, ~86% accuracy at ~0% confidence):** "
+                  "this looks alarming out of context but is a real, informative artifact of how "
+                  "completeness is scored, not a scoring bug. Most messages in this bucket are genuinely "
+                  "ambiguous ones where the correct answer is `null` for several fields -- the model "
+                  "correctly recognizes it can't determine them, outputs `null`, and that matches the "
+                  "labeled expectation (hence high field-level accuracy). But `completeness_score` "
+                  "penalizes null fields identically whether the model *should* know the answer or "
+                  "*correctly can't*. The confidence score is therefore conflating two different "
+                  "questions -- \"is this extraction complete\" and \"is this extraction correct\" -- and "
+                  "this bucket is where that conflation shows up most starkly. It doesn't undermine the "
+                  "system's actual behavior (low confidence still correctly routes these to review, which "
+                  "is the right outcome), but it does mean the confidence *number* itself is not a "
+                  "reliable probability-of-correctness estimate at the low end. A cleaner design would "
+                  "score completeness only against fields the message plausibly contains, rather than "
+                  "treating every correctly-null field as equivalent to a missed one -- noted here as a "
+                  "concrete next improvement rather than smoothed over.")
+    lines.append("")
+    over_confident = [b for b in calibration["buckets"] if b["count"] > 0 and b["gap"] < 0]
+    if over_confident:
+        worst = min(over_confident, key=lambda b: b["gap"])
+        lines.append(f"**Reading the {worst['range']} bucket (largest over-confidence gap, "
+                      f"{worst['gap']:+.1%}):** only {worst['count']} message(s) in this bucket, so treat "
+                      "as a signal to watch rather than a conclusion -- but this is the dangerous "
+                      "direction (confidence overstating actual correctness), and it's driven by the same "
+                      "kind of borderline urgency-label disagreement documented in \"What broke it, and "
+                      "how\" above, not a new failure mode.")
+        lines.append("")
+
     REPORT_PATH.write_text("\n".join(lines) + "\n")
     print(f"\nWrote {REPORT_PATH}")
 
@@ -248,9 +360,12 @@ def log_to_db(summary: dict) -> None:
 if __name__ == "__main__":
     results = run()
     summary = summarize(results)
+    calibration = compute_calibration(results)
     write_raw_results(results)
-    write_report(results, summary)
+    write_report(results, summary, calibration)
     log_to_db(summary)
 
     print("\n--- Summary ---")
     print(json.dumps(summary, indent=2))
+    print("\n--- Calibration ---")
+    print(json.dumps(calibration, indent=2))

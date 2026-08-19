@@ -356,4 +356,45 @@ live-testable without a public tunnel; see README for status.
   and unit-tested. Test ticket and message_log row deleted after
   confirming.
 
+## 2026-08-19 (cont'd) — Phase 5 stretch: confidence calibration check
+
+- Added `compute_calibration()` to `eval/run_eval.py`: buckets all 30 eval
+  messages by confidence into 5 ranges, compares mean confidence per bucket
+  against actual accuracy per bucket, reports Expected Calibration Error
+  (ECE) and a reliability table in `eval_report.md`.
+- Deliberately used a **different correctness definition** than the
+  headline accuracy metric: field-level match against the labeled
+  expectation for every message uniformly (including ambiguous ones, where
+  a correctly-null output counts as correct), versus the headline metric's
+  category-dependent definition (routing-correctness for
+  ambiguous/malformed, field-match for clear). Documented explicitly in the
+  report why these differ -- calibration asks "is the confidence number
+  itself an accurate probability of correctness," not "did the system make
+  the right routing call," and conflating the two would have been
+  misleading.
+- **Found a real, interesting result, not just a number**: the 0.0-0.2
+  confidence bucket shows ~86% actual accuracy despite ~0% mean confidence
+  -- a large apparent under-confidence gap. Investigated rather than just
+  reporting it: this happens because `completeness_score` penalizes a
+  `null` field identically whether the model *should* know the answer or
+  *correctly recognizes it can't*. Most low-confidence messages are
+  genuinely ambiguous ones where null is the right answer, so they score
+  low confidence (appropriately deferring) while still being "field-level
+  correct" (null matches null). This is an honest finding about a real
+  design limitation -- the confidence score conflates "complete" with
+  "correct" -- written into the report as a concrete next improvement
+  rather than smoothed over or hidden.
+- First draft of the "which bucket is most over-confident" callout used a
+  hardcoded message count ("only 2 messages") based on one run's numbers.
+  Caught before committing that the eval calls a live, non-deterministic
+  LLM -- re-running produced different bucket populations (2, then 4, then
+  3 messages in that bucket across three runs). Rewrote it to compute the
+  worst-gap bucket and its count dynamically from the actual results
+  instead of a stale guess, since a hardcoded number that goes wrong on
+  the next run would undermine exactly the honesty the calibration section
+  is trying to demonstrate.
+- Full test suite (42/42) re-confirmed passing after the change; verified
+  the calibration report renders correctly by re-running `run_eval.py`
+  three times and eyeballing the output each time, not just once.
+
 <!-- New entries go above this line -->
