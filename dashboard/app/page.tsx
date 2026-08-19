@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { marked } from "marked";
 import {
   getAllConfidenceScores,
   getDailyFailureRate,
@@ -21,10 +22,10 @@ function bucketize(scores: number[]) {
   }));
 }
 
-function confidenceBadgeClass(confidence: number) {
-  if (confidence >= 0.7) return "high";
-  if (confidence >= 0.4) return "mid";
-  return "low";
+function statusForConfidence(confidence: number): "good" | "warning" | "critical" {
+  if (confidence >= 0.7) return "good";
+  if (confidence >= 0.4) return "warning";
+  return "critical";
 }
 
 // Local-dev-only fallback: reads the sibling eval/eval_report.md file directly.
@@ -64,7 +65,9 @@ export default async function DashboardPage() {
     dbError = e instanceof Error ? e.message : String(e);
   }
 
-  const evalReport = latestEvalRun?.report_markdown ?? readEvalReportFromDisk();
+  const evalReportMarkdown = latestEvalRun?.report_markdown ?? readEvalReportFromDisk();
+  const evalReportHtml = evalReportMarkdown ? marked.parse(evalReportMarkdown, { async: false }) : null;
+
   const buckets = bucketize(confidenceScores);
   const maxBucketCount = Math.max(1, ...buckets.map((b) => b.count));
   const totalMessages = confidenceScores.length;
@@ -73,100 +76,122 @@ export default async function DashboardPage() {
 
   return (
     <main>
-      <h1>Confidence-Gated Intake</h1>
-      <p className="subtitle">Extraction accuracy and confidence, measured, not asserted.</p>
+      <header className="page-header">
+        <div className="titles">
+          <h1>Confidence-Gated Intake</h1>
+          <p className="subtitle">Extraction accuracy and confidence, measured, not asserted.</p>
+        </div>
+        <div className="badge-live">
+          <span className="dot" />
+          Live
+        </div>
+      </header>
 
       {dbError && (
-        <div className="panel" style={{ borderColor: "var(--bad)", marginBottom: 24 }}>
-          Could not reach the database ({dbError}). Is <code>docker compose up</code> running?
-          Showing whatever else is available below.
+        <div className="error-banner">
+          <span className="dot" />
+          <span>
+            Could not reach the database (<code>{dbError}</code>). Showing whatever else is
+            available below.
+          </span>
         </div>
       )}
 
       <section>
-        <h2>Summary</h2>
         <div className="stat-row">
           <div className="stat">
+            <div className="label">Total messages processed</div>
             <div className="value">{totalMessages}</div>
-            <div className="label">total messages processed</div>
           </div>
           <div className="stat">
-            <div className="value">
+            <div className="label">Routed to review queue</div>
+            <div className={`value ${overallFailureRate === null ? "dim" : ""}`}>
               {overallFailureRate !== null ? `${(overallFailureRate * 100).toFixed(1)}%` : "—"}
             </div>
-            <div className="label">routed to review queue</div>
           </div>
           <div className="stat">
-            <div className="value">
+            <div className="label">Latest eval accuracy</div>
+            <div className={`value ${!latestEvalRun ? "dim" : ""}`}>
               {latestEvalRun ? `${(latestEvalRun.accuracy * 100).toFixed(1)}%` : "—"}
             </div>
-            <div className="label">latest eval accuracy</div>
           </div>
           <div className="stat">
-            <div className="value">{latestEvalRun ? latestEvalRun.false_confidence_count : "—"}</div>
-            <div className="label">false-confidence count (latest eval)</div>
+            <div className="label">False-confidence count</div>
+            <div className={`value ${!latestEvalRun ? "dim" : ""}`}>
+              {latestEvalRun ? latestEvalRun.false_confidence_count : "—"}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid-2">
+        <div>
+          <div className="section-head">
+            <h2>Confidence distribution</h2>
+            {totalMessages > 0 && <span className="section-meta">{totalMessages} messages</span>}
+          </div>
+          <div className="panel">
+            {totalMessages === 0 ? (
+              <div className="empty">No messages processed yet.</div>
+            ) : (
+              <div className="histogram">
+                {buckets.map((b) => (
+                  <div key={b.label} className="col">
+                    <span className="bar-count">{b.count}</span>
+                    <div className="bar-track">
+                      <div
+                        className="bar"
+                        style={{
+                          height: b.count > 0 ? `${Math.max((b.count / maxBucketCount) * 100, 4)}%` : "0",
+                        }}
+                      />
+                    </div>
+                    <div className="bar-label">{b.label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="section-head">
+            <h2>Failure rate over time</h2>
+          </div>
+          <div className="panel">
+            {dailyStats.length === 0 ? (
+              <div className="empty">No data yet.</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Day</th>
+                    <th>Total</th>
+                    <th>Flagged</th>
+                    <th>Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyStats.map((d) => (
+                    <tr key={d.day}>
+                      <td className="num">{d.day}</td>
+                      <td className="num">{d.total}</td>
+                      <td className="num">{d.flagged}</td>
+                      <td className="num">{((d.flagged / d.total) * 100).toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </section>
 
       <section>
-        <h2>Confidence distribution</h2>
-        <div className="panel">
-          {totalMessages === 0 ? (
-            <div className="empty">No messages processed yet.</div>
-          ) : (
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 140 }}>
-              {buckets.map((b) => (
-                <div key={b.label} style={{ flex: 1, textAlign: "center" }}>
-                  <div
-                    title={`${b.count} messages`}
-                    style={{
-                      height: `${(b.count / maxBucketCount) * 110}px`,
-                      background: "var(--accent)",
-                      borderRadius: "3px 3px 0 0",
-                      minHeight: b.count > 0 ? 3 : 0,
-                    }}
-                  />
-                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6 }}>{b.label}</div>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="section-head">
+          <h2>Review queue</h2>
+          <span className="section-meta">{reviewQueue.length} unresolved</span>
         </div>
-      </section>
-
-      <section>
-        <h2>Failure rate over time</h2>
-        <div className="panel">
-          {dailyStats.length === 0 ? (
-            <div className="empty">No data yet.</div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Total</th>
-                  <th>Flagged for review</th>
-                  <th>Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dailyStats.map((d) => (
-                  <tr key={d.day}>
-                    <td>{d.day}</td>
-                    <td>{d.total}</td>
-                    <td>{d.flagged}</td>
-                    <td>{((d.flagged / d.total) * 100).toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
-
-      <section>
-        <h2>Review queue ({reviewQueue.length} unresolved)</h2>
         <div className="panel">
           {reviewQueue.length === 0 ? (
             <div className="empty">Nothing waiting on human review.</div>
@@ -184,7 +209,7 @@ export default async function DashboardPage() {
                 {reviewQueue.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <span className={`badge ${confidenceBadgeClass(r.confidence)}`}>
+                      <span className={`badge ${statusForConfidence(r.confidence)}`}>
                         {(r.confidence * 100).toFixed(0)}%
                       </span>
                     </td>
@@ -194,7 +219,7 @@ export default async function DashboardPage() {
                       {r.extracted_json?.urgency ?? "—"}
                     </td>
                     <td>{r.reason ?? "—"}</td>
-                    <td>{new Date(r.created_at).toLocaleString()}</td>
+                    <td className="num">{new Date(r.created_at).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -204,10 +229,12 @@ export default async function DashboardPage() {
       </section>
 
       <section>
-        <h2>Evaluation report</h2>
+        <div className="section-head">
+          <h2>Evaluation report</h2>
+        </div>
         <div className="panel">
-          {evalReport ? (
-            <pre className="eval-report">{evalReport}</pre>
+          {evalReportHtml ? (
+            <div className="eval-report" dangerouslySetInnerHTML={{ __html: evalReportHtml }} />
           ) : (
             <div className="empty">
               No eval report yet. Run <code>cd eval && python3 run_eval.py</code>.

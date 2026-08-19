@@ -495,4 +495,38 @@ scratch files after use) rather than guessing from the outside.
 
 **Dashboard is now genuinely live**: https://confidence-gated-intake.vercel.app
 
+## 2026-08-19 (cont'd) — Dashboard UI redesign
+
+User feedback: UI looked "funky," wanted premium/elegant/modern instead.
+Rebuilt against the `dataviz` skill's method rather than eyeballing colors:
+
+- Swapped the ad-hoc dark palette for the skill's validated reference
+  tokens (dark column) -- chart surface, ink, gridline, and status colors
+  are the exact hex values from `references/palette.md`, not invented.
+- Confidence histogram rebuilt to the mark spec: bars capped at 24px,
+  4px rounded data-ends, hover reveals the exact count (was a bare
+  `title` attribute before).
+- Review queue badges switched from arbitrary red/yellow/green thresholds
+  to the fixed status palette (good/warning/critical), each still paired
+  with the confidence percentage as text -- never color alone.
+- Eval report was a raw `<pre>` dump of markdown source (part of what
+  read as "funky"). Now parsed with `marked` and rendered as real HTML
+  (headings, tables, bold, lists), styled to match the rest of the page.
+- Restructured layout into a 2-column grid (histogram + failure-rate
+  table side by side on desktop, stacking on mobile -- checked at both
+  widths, not just assumed from the CSS).
+- Along the way: `npm install` hit `ENOSPC` -- disk was at 649MB free,
+  a system-wide issue unrelated to this session (confirmed my own scratch
+  usage was trivial). Cleared npm/Homebrew caches to get enough headroom
+  to finish, flagged the underlying disk pressure to the user rather than
+  silently working around it every time it recurs.
+  Also noticed `npm audit` flagging Next.js 14.2.15 at critical severity
+  (accumulated CVEs); bumped to the latest 14.2.x patch (14.2.35) --
+  drops it to high/fewer-CVEs without a major-version jump. Not fully
+  clean (some advisories need Next 16+), left as a known tradeoff rather
+  than forcing a breaking upgrade mid-redesign.
+- Verified with `tsc --noEmit`, `npm run build`, and by actually loading
+  the page (desktop + mobile viewport) with live test data pushed through
+  the pipeline -- not just reading the JSX and assuming it renders right.
+
 <!-- New entries go above this line -->
