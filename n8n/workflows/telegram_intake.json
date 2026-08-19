@@ -1,0 +1,64 @@
+{
+  "name": "Telegram Intake",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "e1a1a003-0000-4000-8000-000000000003",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "confidence-gated-intake-telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "06a7f230-f296-42bc-bfc2-f4ece5d9c5e4",
+          "name": "Telegram Bot"
+        }
+      },
+      "notes": "Free via @BotFather -- no business verification, no quota. See docs/architecture.md for setup."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/extract",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ channel: \"telegram\", raw_content: (($json.message.from.first_name || \"\") + \" (via Telegram): \" + ($json.message.text || \"\")) }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "e1a1a004-0000-4000-8000-000000000004",
+      "name": "Call Extraction Service",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "notes": "Same extraction-service /extract endpoint as email_intake.json -- only the trigger and the raw_content assembly differ, which is exactly the 'small diff' the spec calls for when the service boundary in Phase 1 is clean. Telegram's own first_name is prepended since chat messages don't always restate the sender's name the way emails/texts tend to; the LLM still treats the whole string as message content to extract from, not as ground truth to trust blindly. URL is localhost:8000 because this project runs n8n and extraction-service both natively, not in Docker (see LOGS.md) -- if you're on the docker-compose.yml path instead, change this to http://extraction-service:8000/extract (the Docker network hostname)."
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Call Extraction Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "versionId": "1",
+  "meta": {
+    "instanceId": "confidence-gated-intake-local"
+  },
+  "id": "telegram-intake-workflow"
+}

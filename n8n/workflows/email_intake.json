@@ -1,0 +1,66 @@
+{
+  "name": "Email Intake (IMAP)",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "format": "simple",
+        "options": {}
+      },
+      "id": "e1a1a001-0000-4000-8000-000000000001",
+      "name": "Email Trigger (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "credentials": {
+        "imap": {
+          "id": "3a05b24c-e994-4cff-afd2-993b363cd21f",
+          "name": "Gmail IMAP"
+        }
+      },
+      "notes": "Free Gmail account + an app password (not your normal password) works fine for IMAP. No paid tier needed."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/extract",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ channel: \"email\", raw_content: (\"Subject: \" + ($json.subject || \"\") + \"\\n\\n\" + ($json.text || $json.textPlain || \"\")) }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "e1a1a002-0000-4000-8000-000000000002",
+      "name": "Call Extraction Service",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "notes": "This is the entire pipeline on the n8n side, on purpose. Idempotency, extraction, confidence scoring, and the auto-route/review-queue decision all live in extraction-service (see extraction-service/app.py) as tested Python -- n8n's job here is only trigger + one HTTP call. See CLAUDE.md and spec section 3 for why. URL is localhost:8000 because this project runs n8n and extraction-service both natively, not in Docker (see LOGS.md) -- if you're on the docker-compose.yml path instead, change this to http://extraction-service:8000/extract (the Docker network hostname)."
+    }
+  ],
+  "connections": {
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Call Extraction Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "versionId": "1",
+  "meta": {
+    "instanceId": "confidence-gated-intake-local"
+  },
+  "id": "email-intake-workflow"
+}
