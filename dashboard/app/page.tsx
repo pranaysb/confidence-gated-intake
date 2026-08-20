@@ -28,6 +28,45 @@ function statusForConfidence(confidence: number): "good" | "warning" | "critical
   return "critical";
 }
 
+function IconInbox() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" />
+    </svg>
+  );
+}
+
+function IconRoute() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="19" r="2" />
+      <circle cx="18" cy="5" r="2" />
+      <path d="M18 7v4a4 4 0 0 1-4 4H6" strokeDasharray="3 3" />
+    </svg>
+  );
+}
+
+function IconTarget() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconAlert() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
 // Local-dev-only fallback: reads the sibling eval/eval_report.md file directly.
 // Works when running `npm run dev` from a full checkout (dashboard/ and eval/
 // side by side), but is NOT relied on in production -- a deployment with
@@ -100,22 +139,26 @@ export default async function DashboardPage() {
       <section>
         <div className="stat-row">
           <div className="stat">
+            <div className="icon"><IconInbox /></div>
             <div className="label">Total messages processed</div>
             <div className="value">{totalMessages}</div>
           </div>
           <div className="stat">
+            <div className="icon"><IconRoute /></div>
             <div className="label">Routed to review queue</div>
             <div className={`value ${overallFailureRate === null ? "dim" : ""}`}>
               {overallFailureRate !== null ? `${(overallFailureRate * 100).toFixed(1)}%` : "—"}
             </div>
           </div>
           <div className="stat">
+            <div className="icon"><IconTarget /></div>
             <div className="label">Latest eval accuracy</div>
             <div className={`value ${!latestEvalRun ? "dim" : ""}`}>
               {latestEvalRun ? `${(latestEvalRun.accuracy * 100).toFixed(1)}%` : "—"}
             </div>
           </div>
           <div className="stat">
+            <div className="icon"><IconAlert /></div>
             <div className="label">False-confidence count</div>
             <div className={`value ${!latestEvalRun ? "dim" : ""}`}>
               {latestEvalRun ? latestEvalRun.false_confidence_count : "—"}
